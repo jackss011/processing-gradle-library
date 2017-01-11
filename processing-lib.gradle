@@ -1,0 +1,266 @@
+apply plugin: ProcessingLibrary
+apply plugin: 'java'
+
+import java.nio.charset.Charset;
+import java.nio.file.Files;
+import java.io.FileInputStream;
+
+class ProcessingLibrary implements Plugin<Project>
+{
+  // some standard processing libarary dirs
+  private String SRC_DIR = '/src/'
+  private String EXAMPLE_DIR = '/examples/'
+  private String LIBRARY_DIR = '/library/'
+
+  // customizable dirs
+  private String BUILD_DIR = '/build/'
+  private String CLASSES_DIR = BUILD_DIR + '/classes/'
+  private String CORE_DIR = '/core/library/core.jar'
+
+  // group names
+  private String taskGroup = 'processing'
+  private String taskGroupExamples = 'examples'
+
+
+  // store file name
+  private String STORE_FILE_NAME = '/store-file.txt'
+
+
+  void apply(Project project)
+  {
+    // this extension contains the directory of processing
+    project.extensions.create('processing', ProcessingLibraryDirExtension)
+
+    // see function description
+    createExampleTasks(project)
+
+    project.task('fresh', overwrite: true) {
+      doFirst {
+        project.delete(CLASSES_DIR)
+      }
+    }
+
+    // TASK: package .class into a Jar
+    project.task('packJar', type: Jar, dependsOn: 'compileLib') {
+      group taskGroup
+      description 'create the jar for the library'
+
+      destinationDir = project.file(LIBRARY_DIR)
+      archiveName = project.name + '.jar'
+      from project.files(CLASSES_DIR)
+    }
+
+    // TASK: create folders for the project
+    project.task('libInit') {
+      group taskGroup
+      description 'create basic folders'
+
+      doLast {
+        project.mkdir "$SRC_DIR/${project.name}"  // this is the package
+        project.mkdir EXAMPLE_DIR
+        project.mkdir LIBRARY_DIR
+      }
+    }
+
+    // TASK: open stored example
+    project.task('open', type: Exec) {
+      group taskGroup
+      description 'open the current stored example'
+
+      doFirst {
+        File folder = getStoredExample(project)
+        if(folder != null)
+        {
+          workingDir folder.getAbsolutePath()
+          commandLine 'cmd', "/c", folder.getName() + '.pde'  //TODO: this works only in widows
+        }
+        else {
+          logger.error 'No stored example'
+          throw new StopExecutionException()
+        }
+      }
+    }
+
+    // TASK: print a list of all available examples
+    project.task('examples') {
+      group taskGroup
+      description 'print a list of all available examples'
+
+      doLast {
+        println()
+        println 'Examples:'
+        getExampleFolders(project).each {
+          println it.getName()
+        }
+        println()
+      }
+    }
+
+    project.afterEvaluate
+    {
+      // TASK: compile .class files into build/classes folder
+      //       wait for the project to evaluate, so the user can define the extension 'processing'
+      project.task('compileLib', type: JavaCompile) {
+        group taskGroup
+        description 'compile the library. You don\'t need to use this'
+
+        options.fork = true
+        source = project.fileTree(SRC_DIR)
+
+        classpath = project.files(project.processing.directory + CORE_DIR)
+        destinationDir = project.file(CLASSES_DIR)
+      }
+
+      // TASK: run stored example
+      project.task('run', type: Exec, dependsOn: 'packJar') {
+        group taskGroup
+        description 'run the current stored example'
+
+        doFirst {
+          File folder = getStoredExample(project)
+          if(folder != null)
+          {
+            println()
+            this.printSeparator("From the sketch")
+
+            workingDir project.processing.directory
+            executable 'processing-java'
+            args "--sketch=${folder.getAbsolutePath()}", '--run'
+          }
+          else {
+            logger.error 'No stored example'
+            throw new StopExecutionException()
+          }
+        }
+
+        doLast{ printSeparator('Finished') }
+      }
+
+    }
+  }
+
+
+
+  // ****** Exaples ***********
+  /*
+  * manage examples for this library
+  * creates a task for each example sketch found in 'examples' folder
+  * examples must be a .pde, inside a folder named as the .pde
+  *
+  */
+
+  void createExampleTasks(project)
+  {
+    // for each .pde in the examples folder
+    getExampleFolders(project).each { File sketchFolder ->
+
+      if(project.tasks.findByPath(sketchFolder.getName()) == null)
+        createExampleTask(project, sketchFolder)
+      else logger.error "Task for skecth: $taskName already exists"
+    }
+  }
+
+  // TASK: create a task for each sketch folder, when such a task is executed it stores
+  //        its file path is stored in the file store
+  void createExampleTask(project, File sketchFolder)
+  {
+    Task t = project.task(sketchFolder.getName(), type: ExampleTask) {
+      group taskGroupExamples
+      description 'use this task to store the corrispondig example. Then run or open it'
+
+      doLast {
+        storeExample(example, project)
+        println "Using as stored example: ${example.getName()}"
+      }
+    }
+    t.example = sketchFolder
+  }
+
+  ArrayList<File> getExampleFolders(project)
+  {
+    ArrayList<File> set = new ArrayList();
+    project.fileTree(EXAMPLE_DIR).include('**/*.pde').each {
+      // only if the outer folder is equal to the .pde name
+      if (it.getParentFile().getName() + '.pde' == it.getName())
+      {
+        set.add(it.getParentFile())
+      }
+      // dubug skipped .pde
+      // else println "skipped: $it"
+    }
+    return set
+  }
+
+
+
+  // ****** Store File ***********
+  /*
+  * save an example sketch path in a txt file (named store file), using its name as gradle task
+  *
+  */
+
+  // locate the store file
+  File getStoreFile(project)
+  {
+    return new File(project.getProjectDir().getAbsolutePath() + BUILD_DIR + STORE_FILE_NAME)
+  }
+
+  // save a folder dir in the store file
+  void storeExample(File example, project)
+  {
+    File store = getStoreFile(project)
+    store.createNewFile()
+
+    byte[] b = example.getAbsolutePath().getBytes(Charset.forName("UTF-8"))
+    FileOutputStream stream = new FileOutputStream(store, false)
+    stream.write(b)
+    stream.close()
+  }
+
+  // get file associated with the path in the store file
+  File getStoredExample(project)
+  {
+    File store = getStoreFile(project)
+    if(store.exists())
+    {
+      List<String> lines = Files.readAllLines(store.toPath(), Charset.forName("UTF-8"))
+
+      File r = new File(lines.get(0))
+      if(r.exists()) return r
+      else return null
+    }
+
+    return null
+  }
+
+
+  // ************ STRING UTILITY **************
+
+  String colorString(String str)
+  {
+    return '\u001B[32m' + str + '\u001B[0m'
+  }
+
+  void printSeparator(String str)
+  {
+    def line = '-' * 10
+    println colorString(line + ' ' + str + ' ' + line)
+  }
+
+
+}
+
+
+// ********** custom types ************
+
+// user configurable extension
+class ProcessingLibraryDirExtension
+{
+  def String directory;
+}
+
+// basic class for example tasks (which store an example). example is the example to store
+class ExampleTask extends DefaultTask
+{
+  public File example
+}
