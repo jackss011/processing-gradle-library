@@ -1,5 +1,10 @@
 /build
 /.gradle
+
+# Comment to include examples
+#
 /examples
 
+# Comment to include the packaged JAR library
+#
 #/library
