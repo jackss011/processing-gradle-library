@@ -31,7 +31,7 @@ Download the zipped repository and exctract it in a folder in `<your processing 
   
   You can replace this package with your own.
   
-  The package will be available for `import` .pde files in the editor.
+  The package will be available for `import` in .pde files in the editor.
   
 - Examples
 
