@@ -21,7 +21,7 @@ Download the zipped repository and exctract it in a folder in `<your processing 
   
   ```groovy
   processing {
-    directory: '<your/processing/directory>'
+    directory: 'your/processing/directory'
   }
   ```
 ### Step 3: Write your library
