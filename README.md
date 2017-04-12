@@ -71,7 +71,7 @@ You can replace this package with your own.
 
 The package will be available for `import` in .pde files in the editor once the library is packaged.
   ```java
-  import my.library.*;
+  import my.library.*;  //name of the package
   ```
 
 
