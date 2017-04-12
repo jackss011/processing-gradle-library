@@ -166,7 +166,7 @@ class ProcessingLibrary implements Plugin<Project>
   {
     Task t = project.task(sketchFolder.getName(), type: ExampleTask) {
       group taskGroupExamples
-      description 'use this task to store the corrispondig example. Then run or open it'
+      description 'use this task to store the corrisponding example. Then run or open it'
 
       doLast {
         storeExample(example, project)
