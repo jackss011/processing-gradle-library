@@ -5,8 +5,72 @@ import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.io.FileInputStream;
 
-import groovy.json.JsonOutput
-import groovy.json.JsonSlurper
+import groovy.json.*
+
+
+// user configurable extension
+class ProcessingLibraryDirExtension
+{
+  def String directory;
+}
+
+// basic class for example tasks (which store an example). example is the example to store
+class ExampleTask extends DefaultTask
+{
+  def example
+}
+
+class UserFile
+{
+  def project;
+  File userFile;
+  def userObject;
+
+  UserFile(project, boolean create = false)
+  {
+    assert project
+    this.project = project
+
+    userFile = project.file(ProcessingLibrary.USER_FILE_NAME)
+    if(!userFile.exists())
+    {
+      if(create)
+      {
+        println "Creating new file..."
+        userFile.createNewFile()
+        userFile.withWriter {out -> out.println '{}'}
+      }
+      else
+        throw new GradleException("User file doesn't exists")
+    }
+
+    userObject = new JsonSlurper().parse(userFile)
+  }
+
+  File getSelectedExample()
+  {
+    return project.file(userObject.selected)
+  }
+
+  void selectExample(File exampleFolder)
+  {
+    assert exampleFolder
+
+    userObject.put("selected", exampleFolder.getAbsolutePath())
+    userFile.withWriter {out -> out.println JsonOutput.toJson(userObject)}
+  }
+
+  String getProcessingDir()
+  {
+    if(userObject.processing)
+      return userObject.processing
+    else
+      throw new GradleException("Processing directory undefined")
+  }
+
+  static def make(project, create = false) { return new UserFile(project, create) }
+}
+
 
 class ProcessingLibrary implements Plugin<Project>
 {
@@ -15,7 +79,7 @@ class ProcessingLibrary implements Plugin<Project>
   private String EXAMPLE_DIR = '/examples/'
   private String LIBRARY_DIR = '/library/'
 
-  private String USER_FILE_NAME = 'lib-user.json'
+  private static final String USER_FILE_NAME = 'lib-user.json'
 
   // customizable dirs
   private String BUILD_DIR = '/build/'
@@ -38,21 +102,6 @@ class ProcessingLibrary implements Plugin<Project>
 
     // see function description
     createExampleTasks(project)
-
-    project.task('debug') {
-      doLast {
-
-        selectExample(getExampleFolders(project)[0], project);
-
-        println getSelectedExample(project)
-      }
-    }
-
-    project.task('fresh', overwrite: true) {
-      doFirst {
-        project.delete(CLASSES_DIR)
-      }
-    }
 
     // TASK: package .class into a Jar
     project.task('packJar', type: Jar, dependsOn: 'compileLib') {
@@ -83,15 +132,13 @@ class ProcessingLibrary implements Plugin<Project>
 
       doFirst {
         File folder = getStoredExample(project)
-        if(folder != null)
+        if(folder)
         {
           workingDir folder.getAbsolutePath()
           commandLine 'cmd', "/c", folder.getName() + '.pde'  //TODO: this works only in widows
         }
-        else {
-          logger.error 'No stored example'
-          throw new StopExecutionException()
-        }
+        else
+          throw new GradleException("No ")
       }
     }
 
@@ -101,12 +148,9 @@ class ProcessingLibrary implements Plugin<Project>
       description 'print a list of all available examples'
 
       doLast {
-        println()
-        println 'Examples:'
-        getExampleFolders(project).each {
-          println it.getName()
-        }
-        println()
+        println ''
+        getExampleFolders(project).each { println it.getName() }
+        println ''
       }
     }
 
@@ -166,12 +210,7 @@ class ProcessingLibrary implements Plugin<Project>
   void createExampleTasks(project)
   {
     // for each .pde in the examples folder
-    getExampleFolders(project).each { File sketchFolder ->
-
-      if(project.tasks.findByPath(sketchFolder.getName()) == null)
-        createExampleTask(project, sketchFolder)
-      else logger.error "Task for skecth: $taskName already exists"
-    }
+    getExampleFolders(project).each { sketchFolder -> createExampleTask(project, sketchFolder) }
   }
 
   // TASK: create a task for each sketch folder, when such a task is executed it stores
@@ -181,13 +220,14 @@ class ProcessingLibrary implements Plugin<Project>
     Task t = project.task(sketchFolder.getName(), type: ExampleTask) {
       group taskGroupExamples
       description 'use this task to store the corrisponding example. Then run or open it'
+      example sketchFolder
 
       doLast {
         storeExample(example, project)
         println "Using as stored example: ${example.getName()}"
       }
     }
-    t.example = sketchFolder
+    //t.example = sketchFolder
   }
 
   ArrayList<File> getExampleFolders(project)
@@ -206,105 +246,9 @@ class ProcessingLibrary implements Plugin<Project>
     return set
   }
 
-
-
-  // ****** User File ***********
-  /*
-  * Used to save user dependent configuration
-  *
-  */
-
-  // locate the user file
-  File getUserFile(project)
-  {
-    assert project
-
-    return project.file(USER_FILE_NAME)
-  }
-
-  File getUserFileCheck(project)
-  {
-    assert project
-
-    def userFile = getUserFile(project).exists() ? return userFile : throw new GradleException("User file not defined")
-  }
-
-  // save a folder dir in the user file
-  void selectExample(File exampleFolder, project)
-  {
-    assert project
-    assert exampleFolder
-
-    if(exampleFolder.exists())
-    {
-      def userFile = getUserFile(project);
-      // create user file if doesn't exists
-      if(!userFile.exists()) userFile.createNewFile()
-
-      String json = JsonOutput.toJson([selected: exampleFolder.getAbsolutePath()])
-      userFile.withWriter {out -> out.println json}
-    }
-    else throw new GradleException("Example folder doesn't exists: ${exampleFolder.getAbsolutePath()}")
-  }
-
-  // get file associated with the path in the store file
-  File getSelectedExample(project)
-  {
-    assert project
-
-    def userFile = getUserFile(project)
-    if(userFile.exists())
-    {
-      JsonSlurper reader = new JsonSlurper()
-      def obj = reader.parse userFile
-      // check if file has property
-      if(!obj.selected) return null
-      // get selected file
-      def selected = project.file(obj.selected)
-
-      return selected.exists() ? selected : null
-    }
-    else throw new GradleException("User file doesn't exists")
-  }
-
-  def getJsonUserFile(project)
-  {
-    assert project
-
-    def userFile = getUserFileCheck(project)
-
-
-
-  }
-
-
-  // ************ STRING UTILITY **************
-
-  String colorString(String str)
-  {
-    return '\u001B[32m' + str + '\u001B[0m'
-  }
-
-  void printSeparator(String str)
+  static void printSeparator(String str)
   {
     def line = '-' * 10
-    println colorString(line + ' ' + str + ' ' + line)
+    println "\u001B[32m $line $str $line \u001B[0m"
   }
-
-
-}
-
-
-// ********** custom types ************
-
-// user configurable extension
-class ProcessingLibraryDirExtension
-{
-  def String directory;
-}
-
-// basic class for example tasks (which store an example). example is the example to store
-class ExampleTask extends DefaultTask
-{
-  public File example
 }
