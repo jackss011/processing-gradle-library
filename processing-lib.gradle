@@ -164,7 +164,7 @@ class ProcessingLibrary implements Plugin<Project>
     }
 
     // TASK: run selected example
-    project.task('run', type: Exec, dependsOn: 'packJar') {
+    project.task('run', type: Exec, dependsOn: 'package') {
       group TASK_GROUP
       description 'run the current stored example'
 
