@@ -7,13 +7,6 @@ import java.io.FileInputStream;
 
 import groovy.json.*
 
-
-// user configurable extension
-class ProcessingLibraryDirExtension
-{
-  def String directory;
-}
-
 // basic class for example tasks (which store an example). example is the example to store
 class ExampleTask extends DefaultTask
 {
@@ -90,16 +83,8 @@ class ProcessingLibrary implements Plugin<Project>
   private String taskGroup = 'processing'
   private String taskGroupExamples = 'examples'
 
-
-  // store file name
-  private String STORE_FILE_NAME = '/store-file.txt'
-
-
   void apply(Project project)
   {
-    // this extension contains the directory of processing
-    project.extensions.create('processing', ProcessingLibraryDirExtension)
-
     // see function description
     createExampleTasks(project)
 
