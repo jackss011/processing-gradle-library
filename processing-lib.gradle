@@ -182,6 +182,14 @@ class ProcessingLibrary implements Plugin<Project>
 
       doLast { Separator.make 'finished' }
     }
+
+    // TASK: delete build folder and jar files in LIBRARY_DIR
+    project.task('fresh') {
+      doLast{
+        project.file(BUILD_DIR).deleteDir()
+        project.fileTree(dir: LIBRARY_DIR, include: "**/*.jar").each {file -> project.delete file}
+      }
+    }
   }
 }
 
