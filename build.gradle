@@ -1,5 +1,1 @@
 apply from: 'processing-lib.gradle'
-
-processing {
-  directory 'D:/Programmi/Processing/processing-3.2.1'
-}
