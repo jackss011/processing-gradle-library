@@ -7,3 +7,6 @@
 
 # Uncomment to include the packaged JAR library
 /library
+
+# ignore user dependent file
+lib-user.json

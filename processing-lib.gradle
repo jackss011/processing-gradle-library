@@ -5,12 +5,17 @@ import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.io.FileInputStream;
 
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+
 class ProcessingLibrary implements Plugin<Project>
 {
   // some standard processing libarary dirs
   private String SRC_DIR = '/src/'
   private String EXAMPLE_DIR = '/examples/'
   private String LIBRARY_DIR = '/library/'
+
+  private String USER_FILE_NAME = 'lib-user.json'
 
   // customizable dirs
   private String BUILD_DIR = '/build/'
@@ -33,6 +38,15 @@ class ProcessingLibrary implements Plugin<Project>
 
     // see function description
     createExampleTasks(project)
+
+    project.task('debug') {
+      doLast {
+
+        selectExample(getExampleFolders(project)[0], project);
+
+        println getSelectedExample(project)
+      }
+    }
 
     project.task('fresh', overwrite: true) {
       doFirst {
@@ -178,6 +192,8 @@ class ProcessingLibrary implements Plugin<Project>
 
   ArrayList<File> getExampleFolders(project)
   {
+    assert project
+
     ArrayList<File> set = new ArrayList();
     project.fileTree(EXAMPLE_DIR).include('**/*.pde').each {
       // only if the outer folder is equal to the .pde name
@@ -185,52 +201,80 @@ class ProcessingLibrary implements Plugin<Project>
       {
         set.add(it.getParentFile())
       }
-      // dubug skipped .pde
-      // else println "skipped: $it"
+      else println "skipped: ${it.getAbsolutePath()}"
     }
     return set
   }
 
 
 
-  // ****** Store File ***********
+  // ****** User File ***********
   /*
-  * save an example sketch path in a txt file (named store file), using its name as gradle task
+  * Used to save user dependent configuration
   *
   */
 
-  // locate the store file
-  File getStoreFile(project)
+  // locate the user file
+  File getUserFile(project)
   {
-    return new File(project.getProjectDir().getAbsolutePath() + BUILD_DIR + STORE_FILE_NAME)
+    assert project
+
+    return project.file(USER_FILE_NAME)
   }
 
-  // save a folder dir in the store file
-  void storeExample(File example, project)
+  File getUserFileCheck(project)
   {
-    File store = getStoreFile(project)
-    store.createNewFile()
+    assert project
 
-    byte[] b = example.getAbsolutePath().getBytes(Charset.forName("UTF-8"))
-    FileOutputStream stream = new FileOutputStream(store, false)
-    stream.write(b)
-    stream.close()
+    def userFile = getUserFile(project).exists() ? return userFile : throw new GradleException("User file not defined")
+  }
+
+  // save a folder dir in the user file
+  void selectExample(File exampleFolder, project)
+  {
+    assert project
+    assert exampleFolder
+
+    if(exampleFolder.exists())
+    {
+      def userFile = getUserFile(project);
+      // create user file if doesn't exists
+      if(!userFile.exists()) userFile.createNewFile()
+
+      String json = JsonOutput.toJson([selected: exampleFolder.getAbsolutePath()])
+      userFile.withWriter {out -> out.println json}
+    }
+    else throw new GradleException("Example folder doesn't exists: ${exampleFolder.getAbsolutePath()}")
   }
 
   // get file associated with the path in the store file
-  File getStoredExample(project)
+  File getSelectedExample(project)
   {
-    File store = getStoreFile(project)
-    if(store.exists())
+    assert project
+
+    def userFile = getUserFile(project)
+    if(userFile.exists())
     {
-      List<String> lines = Files.readAllLines(store.toPath(), Charset.forName("UTF-8"))
+      JsonSlurper reader = new JsonSlurper()
+      def obj = reader.parse userFile
+      // check if file has property
+      if(!obj.selected) return null
+      // get selected file
+      def selected = project.file(obj.selected)
 
-      File r = new File(lines.get(0))
-      if(r.exists()) return r
-      else return null
+      return selected.exists() ? selected : null
     }
+    else throw new GradleException("User file doesn't exists")
+  }
 
-    return null
+  def getJsonUserFile(project)
+  {
+    assert project
+
+    def userFile = getUserFileCheck(project)
+
+
+
   }
 
 
